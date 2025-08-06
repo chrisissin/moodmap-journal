@@ -1,9 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { loadData, saveData, defaultCategories, defaultPurposes } from './data';
+import { loadData, saveData, defaultCategories, defaultPurposes, saveAllMetrics } from './data';
+
+// Keywords for auto-tagging
+const categoryKeywords = {
+  work: ['work', 'job', 'task', 'admin'],
+  learn: ['learn', 'study', 'practice'],
+  play: ['play', 'fun', 'game'],
+  family: ['family', 'parents', 'mom', 'dad'],
+  grateful: ['grateful', 'thank', '+'],
+  ego: ['ego', 'regret', 'criticism'],
+  connect: ['connect', 'help', 'support', 'value'],
+  exercise: ['run', 'bike', 'gym', 'exercise', 'walk', 'hike'],
+  errand: ['errand', 'shop', 'buy', 'purchase'],
+  create: ['create', 'make', 'build', 'write'],
+  career: ['career', 'role', 'promotion'],
+  class: ['class', 'course', 'lesson'],
+  kids: ['kid', 'kids', 'child', 'children', 'nana', 'ray', 'casper'],
+  bow: ['bow', 'bowen'],
+  parent: ['parent', 'parents'],
+  friend: ['friend', 'friends', 'buddy', 'pal'],
+  volunteer: ['volunteer', 'service','scout'],
+  commute: ['commute', 'drive', 'bus', 'train'],
+  mindful: ['mindful', 'meditate', 'meditation'],
+  meal: ['meal', 'eat', 'dinner', 'lunch', 'breakfast', 'juice'],
+  media: ['media', 'tv', 'video', 'podcast'],
+  money: ['money', 'finance', 'budget', 'pay','bookkeep','banking'],
+  read: ['read', 'book', 'article']
+};
 
 export default function DayView() {
   const [data, setData] = useState({});
-  const [date, setDate] = useState(() => (new Date()).toISOString().slice(0,10));
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0,10));
   const [showEditor, setShowEditor] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
 
@@ -14,13 +41,38 @@ export default function DayView() {
   function saveAll(newData) {
     setData(newData);
     saveData(newData);
+    saveAllMetrics(newData);
   }
 
   function startEdit(hour, event = null) {
-    setEditEvent(event ? { ...event } : { hour, note: '', rating: 3, categories: [], purposes: [], context: {} });
+    setEditEvent(
+      event ? { ...event } : { hour, note: '', rating: 3, categories: [], purposes: [], context: {} }
+    );
     setShowEditor(true);
   }
+
   function saveEvent(ev) {
+    const text = ev.note || '';
+    const tags = ev.categories ? [...ev.categories] : [];
+    // escape regex chars
+    const escapeReg = s => s.replace(/[.*+?^${}()|[\]\\]/g, m => `\\${m}`);
+    // auto-tag categories
+    defaultCategories.forEach(cat => {
+      if (!tags.includes(cat.id)) {
+        (categoryKeywords[cat.id] || [cat.id]).forEach(kw => {
+          let matched = false;
+          if (/\w/.test(kw)) {
+            const pattern = `\\b${escapeReg(kw)}\\b`;
+            if (new RegExp(pattern, 'i').test(text)) matched = true;
+          } else {
+            if (text.includes(kw)) matched = true;
+          }
+          if (matched) tags.push(cat.id);
+        });
+      }
+    });
+    ev.categories = Array.from(new Set(tags));
+
     const day = data[date] ? [...data[date]] : [];
     if (ev.id) {
       const idx = day.findIndex(e => e.id === ev.id);
@@ -29,14 +81,13 @@ export default function DayView() {
       ev.id = Math.random().toString(36).slice(2);
       day.push(ev);
     }
-    const newData = { ...data, [date]: day };
-    saveAll(newData);
+    saveAll({ ...data, [date]: day });
     setShowEditor(false);
   }
+
   function deleteEvent(ev) {
     const day = data[date] ? data[date].filter(e => e.id !== ev.id) : [];
-    const newData = { ...data, [date]: day };
-    saveAll(newData);
+    saveAll({ ...data, [date]: day });
     setShowEditor(false);
   }
 
@@ -44,26 +95,20 @@ export default function DayView() {
 
   return (
     <div>
-      <div>
+      <div style={{ marginBottom: 8 }}>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-        <button onClick={() => setShowEditor(true)}>+ Add Event</button>
+        <button onClick={() => startEdit(null)}>+ Add Event</button>
       </div>
       <div>
         {eventsByHour.map((events, hour) => (
           <div key={hour} style={{ borderBottom: '1px solid #ddd', marginBottom: 6 }}>
-            <b style={{ width: 46, display: 'inline-block' }}>{String(hour).padStart(2, '0')}:00</b>
-            {events.length === 0 && (
-              <button style={{ fontSize: 11, marginLeft: 6 }} onClick={() => startEdit(hour)}>+ Add</button>
-            )}
+            <b style={{ width: 50, display: 'inline-block' }}>{String(hour).padStart(2,'0')}:00</b>
+            {events.length === 0 && <button style={{ fontSize: 11, marginLeft: 6 }} onClick={() => startEdit(hour)}>+ Add</button>}
             {events.map(ev => (
-              <div key={ev.id} style={{
-                display: 'flex', alignItems: 'center', padding: '2px 0', cursor: 'pointer'
-              }}
-                onClick={() => startEdit(hour, ev)}
-              >
-                <span style={{ width: 32 }}>{ev.rating}★</span>
-                <span style={{ width: 80, fontSize: 12 }}>{ev.note.slice(0, 10)}{ev.note.length > 10 ? '…' : ''}</span>
-                <span>
+              <div key={ev.id} style={{ display: 'flex', alignItems: 'center', padding: '2px 0', cursor: 'pointer' }} onClick={() => startEdit(ev.hour, ev)}>
+                <span style={{ width: 36 }}>{ev.rating}★</span>
+                <span style={{ flex: 1, fontSize: 12 }}>{ev.note}</span>
+                <span style={{ marginLeft: 'auto' }}>
                   {ev.categories.map(cid => defaultCategories.find(c => c.id === cid)?.icon)}
                   {Object.entries(ev.context || {}).map(([k, v]) => v && contextIcon(k))}
                   {ev.purposes.map(pid => defaultPurposes.find(p => p.id === pid)?.icon)}
@@ -73,20 +118,18 @@ export default function DayView() {
           </div>
         ))}
       </div>
-      {showEditor && (
-        <EventEditor
-          event={editEvent}
-          onSave={saveEvent}
-          onCancel={() => setShowEditor(false)}
-          onDelete={deleteEvent}
-        />
-      )}
+      {showEditor && <EventEditor event={editEvent} onSave={saveEvent} onCancel={() => setShowEditor(false)} onDelete={deleteEvent} />}
     </div>
   );
 }
 
 function contextIcon(type) {
-  return type === 'weather' ? '☀️' : type === 'location' ? '📍' : type === 'movement' ? '🏃' : '🔹';
+  switch (type) {
+    case 'weather': return '☀️';
+    case 'location': return '📍';
+    case 'movement': return '🏃';
+    default: return '🔹';
+  }
 }
 
 function EventEditor({ event, onSave, onCancel, onDelete }) {
@@ -98,65 +141,21 @@ function EventEditor({ event, onSave, onCancel, onDelete }) {
   const hour = event.hour;
 
   return (
-    <div style={{
-      position: 'fixed', top: 64, left: '50%', transform: 'translateX(-50%)', background: '#fff',
-      boxShadow: '0 2px 12px #0002', borderRadius: 10, padding: 18, zIndex: 100, minWidth: 340
-    }}>
+    <div style={{ position: 'fixed', top: 64, left: '50%', transform: 'translateX(-50%)', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.2)', padding: 16, borderRadius: 8 }}>
+      <div style={{ display:'flex', justifyContent:'space-between' }}>
+        <b>{hour != null ? `${String(hour).padStart(2,'0')}:00` : 'New'} Event</b>
+        <button onClick={onCancel}>✕</button>
+      </div>
+      <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Note..." style={{ width: '100%', margin: '8px 0' }} />
       <div>
-        <b>{String(hour).padStart(2, '0')}:00 Event</b>
-        <button style={{ float: 'right' }} onClick={onCancel}>✕</button>
+        <label>Rating:&nbsp;<select value={rating} onChange={e => setRating(+e.target.value)}>{[1,2,3,4,5].map(i => <option key={i} value={i}>{i}★</option>)}</select></label>
       </div>
       <div style={{ marginTop: 8 }}>
-        <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note..." rows={2} style={{ width: '100%' }} />
-      </div>
-      <div>
-        <label>Rating: </label>
-        <select value={rating} onChange={e => setRating(+e.target.value)}>
-          {[1,2,3,4,5].map(i => <option key={i} value={i}>{i}★</option>)}
-        </select>
-      </div>
-      <div>
-        <label>Categories: </label>
-        {defaultCategories.map(cat =>
-          <label key={cat.id} style={{ marginRight: 6 }}>
-            <input type="checkbox" checked={categories.includes(cat.id)} onChange={e => {
-              setCategories(e.target.checked
-                ? [...categories, cat.id]
-                : categories.filter(id => id !== cat.id));
-            }} /> {cat.icon}
-          </label>
-        )}
-      </div>
-      <div>
-        <label>Purposes: </label>
-        {defaultPurposes.map(pur =>
-          <label key={pur.id} style={{ marginRight: 6 }}>
-            <input type="checkbox" checked={purposes.includes(pur.id)} onChange={e => {
-              setPurposes(e.target.checked
-                ? [...purposes, pur.id]
-                : purposes.filter(id => id !== pur.id));
-            }} /> {pur.icon}
-          </label>
-        )}
-      </div>
-      <div>
-        <label>Weather: </label>
-        <input value={context.weather || ''} onChange={e => setContext({ ...context, weather: e.target.value })} style={{ width: 60 }} />
-        <label> Location: </label>
-        <input value={context.location || ''} onChange={e => setContext({ ...context, location: e.target.value })} style={{ width: 60 }} />
-        <label> Movement: </label>
-        <input value={context.movement || ''} onChange={e => setContext({ ...context, movement: e.target.value })} style={{ width: 60 }} />
+        <strong>Categories:</strong>&nbsp;{defaultCategories.map(cat => <label key={cat.id} style={{ marginRight: 8 }}><input type="checkbox" checked={categories.includes(cat.id)} onChange={e => setCategories(e.target.checked ? [...categories, cat.id] : categories.filter(id => id !== cat.id))} />{' '}{cat.icon} {cat.name}</label>)}
       </div>
       <div style={{ marginTop: 8 }}>
-        <button onClick={() => onSave({
-          ...event,
-          note,
-          rating,
-          categories,
-          purposes,
-          context
-        })}>Save</button>
-        {event.id && <button style={{ marginLeft: 12, color: 'red' }} onClick={() => onDelete(event)}>Delete</button>}
+        <button onClick={() => onSave({ ...event, note, rating, categories, purposes, context })}>Save</button>
+        {event.id && <button onClick={() => onDelete(event)} style={{ marginLeft: 8, color: 'red' }}>Delete</button>}
       </div>
     </div>
   );

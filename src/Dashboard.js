@@ -1,8 +1,7 @@
-// src/Dashboard.js
 import React, { useState, useEffect } from 'react';
-import { loadData, defaultCategories, defaultPurposes } from './data';
+import { loadMetrics, defaultCategories } from './data';
 
-// Helper to list all YYYY-MM-DD dates between two dates
+// Helper: list all dates between two dates (inclusive)
 function getDatesInRange(start, end) {
   const dates = [];
   const curr = new Date(start);
@@ -15,140 +14,112 @@ function getDatesInRange(start, end) {
 }
 
 export default function Dashboard() {
-  const [data, setData] = useState({});
+  const [metrics, setMetrics] = useState({});
   useEffect(() => {
-    setData(loadData());
+    setMetrics(loadMetrics());
   }, []);
 
-  // Default to last 7 days
+  // Date range selection (last 7 days default)
   const today = new Date();
   const defaultEnd = today.toISOString().slice(0,10);
   const defaultStart = new Date(today.getTime() - 6*24*60*60*1000)
                           .toISOString().slice(0,10);
-
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate]     = useState(defaultEnd);
 
-  // 1) Gather all events in the selected range
-  const datesInRange = getDatesInRange(startDate, endDate);
-  const eventsInRange = datesInRange.flatMap(date =>
-    (data[date] || []).map(ev => ({ ...ev, date }))
-  );
+  // Gather dates in range
+  const dates = getDatesInRange(startDate, endDate);
 
-  // 2) Category Pie (sorted by count)
+  // Category Distribution Data (aggregate counts over range)
   const catCounts = {};
-  eventsInRange.forEach(ev =>
-    ev.categories.forEach(cid =>
-      catCounts[cid] = (catCounts[cid]||0) + 1
-    )
-  );
-  // sort descending by count
-  const sortedCats = Object.entries(catCounts)
-    .sort((a,b)=> b[1] - a[1]);
-  const pieData = {
-    labels: sortedCats.map(([cid]) =>
-      defaultCategories.find(c=>c.id===cid)?.icon || cid
-    ),
-    datasets: [{ data: sortedCats.map(([,cnt])=>cnt) }]
-  };
-
-  // 3) Purpose Bar (unchanged)
-  const purCounts = {};
-  eventsInRange.forEach(ev =>
-    ev.purposes.forEach(pid =>
-      purCounts[pid] = (purCounts[pid]||0) + 1
-    )
-  );
-  const barData = {
-    labels: Object.keys(purCounts).map(pid =>
-      defaultPurposes.find(p=>p.id===pid)?.icon || pid
-    ),
-    datasets: [{ data: Object.values(purCounts) }]
-  };
-
-  // 4) Mood Timeline: average rating per day
-  const moodByDate = {};
-  eventsInRange.forEach(ev => {
-    if (!moodByDate[ev.date]) moodByDate[ev.date] = { sum:0, count:0 };
-    moodByDate[ev.date].sum   += ev.rating;
-    moodByDate[ev.date].count += 1;
+  dates.forEach(d => {
+    const c = metrics[d]?.catCounts || {};
+    Object.entries(c).forEach(([cid, cnt]) => {
+      catCounts[cid] = (catCounts[cid] || 0) + cnt;
+    });
   });
-  const timelineData = datesInRange.map(d => {
-    const m = moodByDate[d];
-    return m ? +(m.sum/m.count).toFixed(1) : null;
+  // Sort categories if desired (or keep default order)
+  const sortedCats = Object.keys(catCounts);
+
+  // Mood timeline: average rating per day
+  const timeline = dates.map(d => {
+    const m = metrics[d];
+    return m ? m.avgRating : null;
   });
 
   return (
     <div>
       <h3>Dashboard</h3>
       <div style={{ marginBottom: 16 }}>
-        <label>
-          From{' '}
-          <input
-            type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-          />
-        </label>
-        {'  '}
-        <label>
-          To{' '}
-          <input
-            type="date"
-            value={endDate}
-            onChange={e => setEndDate(e.target.value)}
-          />
-        </label>
+        <label>From </label>
+        <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} />
+        <label style={{ marginLeft: 12 }}>To </label>
+        <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} />
       </div>
 
       <div style={{ display: 'flex', gap: 32 }}>
         <div>
-          <b>Category Pie</b>
-          <PieChart data={pieData} />
+          <b>Category Distribution ({startDate}–{endDate})</b>
+          <div>
+            {sortedCats.map(cid => {
+              const icon = defaultCategories.find(c=>c.id===cid)?.icon || '';
+              const name = defaultCategories.find(c=>c.id===cid)?.name || cid;
+              const cnt = catCounts[cid] || 0;
+              return <div key={cid}>{icon} {name}: {cnt}</div>;
+            })}
+          </div>
         </div>
         <div>
-          <b>Purpose Bar</b>
-          <BarChart data={barData} />
+          <b>Mood Timeline (Avg Rating)</b>
+          <div>
+            {dates.map((d,i) => (
+              <div key={d}>{d}: {timeline[i] !== null ? timeline[i] + '★' : '—'}</div>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div style={{ marginTop: 24 }}>
-        <b>Mood Timeline (avg per day)</b>
-        <TimelineChart dates={datesInRange} data={timelineData} />
+      {/* Metrics Table */}
+      <div style={{ marginTop: 32, overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Total</th>
+              {defaultCategories.map(cat => (
+                <th key={cat.id} style={thStyle}>{cat.icon}</th>
+              ))}
+            </tr>
+            <tr>
+              <th style={thStyle}>Category</th>
+              {defaultCategories.map(cat => (
+                <th key={cat.id} style={thStyle}>{cat.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Totals row */}
+            <tr>
+              <td style={tdStyle}>Totals</td>
+              {defaultCategories.map(cat => (
+                <td key={cat.id} style={tdStyle}>{catCounts[cat.id] || 0}</td>
+              ))}
+            </tr>
+            {/* One row per date */}
+            {dates.map(d => (
+              <tr key={d} style={{ background: '#f9f9f9' }}>
+                <td style={tdStyle}>{d}</td>
+                {defaultCategories.map(cat => (
+                  <td key={cat.id} style={tdStyle}>{metrics[d]?.catCounts[cat.id] || 0}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
-// Simple placeholder charts—swap with Chart.js or other lib as desired
-function PieChart({ data }) {
-  if (!data.labels.length) return <div>No category data</div>;
-  return (
-    <div>
-      {data.labels.map((l,i) =>
-        <div key={l}>{l}: {data.datasets[0].data[i]}</div>
-      )}
-    </div>
-  );
-}
-function BarChart({ data }) {
-  if (!data.labels.length) return <div>No purpose data</div>;
-  return (
-    <div>
-      {data.labels.map((l,i) =>
-        <div key={l}>{l}: {'█'.repeat(data.datasets[0].data[i])}</div>
-      )}
-    </div>
-  );
-}
-function TimelineChart({ dates, data }) {
-  return (
-    <div>
-      {dates.map((d,i) => (
-        <div key={d}>
-          {d}: {data[i] !== null ? data[i] + '★' : '—'}
-        </div>
-      ))}
-    </div>
-  );
-}
+// Simple cell styles
+const thStyle = { border: '1px solid #ccc', padding: 6, background: '#eee' };
+const tdStyle = { border: '1px solid #ccc', padding: 6 };
