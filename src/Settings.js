@@ -28,13 +28,97 @@ function insertPMMarker(rawText) {
   return result.join('\n');
 }
 
-// Parser: Import from custom log format (placeholder)
-function importFromLogFormat(text, existing = {}) {
-  // TODO: implement parser logic
-  return existing;
-}
+// Parser: Import from custom log format
+ function importFromLogFormat(text, existingData = {}) {
+   const dateLine  = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+   const hourLine  = /^(\d{1,2})(?:[-–](\d{1,2}))?$/;
+   const pmMarker  = /^---\s*PM\s*---$/i;
 
-export default function Settings() {
+   let currentDate = null;
+   let currentHour = null;
+   let isPM        = false;
+   let results     = { ...existingData };
+   let imported    = 0;
+
+   for (const rawLine of text.split('\n')) {
+     const line = rawLine.trim();
+     if (!line) continue;
+     if (pmMarker.test(line)) {
+       isPM = true;
+       continue;
+     }
+     let match;
+     // Date header (MM/DD/YYYY)
+     if ((match = dateLine.exec(line))) {
+       const [_, mm, dd, yyyy] = match;
+       currentDate = `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+       results[currentDate] = results[currentDate] || [];
+       isPM = false;
+     }
+     // Hour block
+     else if ((match = hourLine.exec(line))) {
+       let h = parseInt(match[1], 10);
+       if (isPM && h !== 12) h += 12;
+       currentHour = h;
+     }
+     // Note line
+     else if (currentDate != null && currentHour != null) {
+       let note = line;
+       // auto‐detect purposes
+       const purposes = [];
+       if (/\bgrateful\b/i.test(note)) purposes.push('meaning');
+       if (/\bhappy\b/i.test(note))    purposes.push('happy');
+       if (/\badventure/i.test(note))  purposes.push('adventure');
+
+       // auto‐detect categories (same list you use elsewhere)
+       const categories = [];
+       if (/\b(learn|class)\b/i.test(note))          categories.push('learn');
+       if (/\bwork\b/i.test(note))                   categories.push('work');
+       if (/\b(run|bike|gym)\b/i.test(note))         categories.push('exercise');
+       if (/\b(meditation|stretch|chill|nap)\b/i.test(note)) categories.push('mindful');
+       if (/\bego\b/i.test(note))                    categories.push('ego');
+       if (/\bgrateful\b/i.test(note))               categories.push('grateful');
+       if (/\berrand\b/i.test(note))                 categories.push('errand');
+       if (/\bcreate\b/i.test(note))                 categories.push('create');
+       if (/\b(career|job)\b/i.test(note))           categories.push('career');
+       if (/\b(kids|nana|casper|ray)\b/i.test(note)) categories.push('kids');
+       if (/\bbow\b/i.test(note))                    categories.push('bow');
+       if (/\bparent\b/i.test(note))                 categories.push('parent');
+       if (/\bfriend\b/i.test(note))                 categories.push('friend');
+       if (/\b(volunteer|scout)\b/i.test(note))      categories.push('volunteer');
+       if (/\b(drive|commute)\b/i.test(note))        categories.push('commute');
+       if (/\b(library|read)\b/i.test(note))         categories.push('read');
+       if (/\b(tv|phone)\b/i.test(note))             categories.push('media');
+       if (/\b(money|bookkeep)\b/i.test(note))       categories.push('money');
+       if (/\b(lunch|breakfast|dinner)\b/i.test(note)) categories.push('meal');
+       if (/\b(woke|sleep)\b/i.test(note))           categories.push('sleep');
+
+       // rating heuristics
+       let rating = 3;
+       if (note.includes('+') || /grateful|happy|good/i.test(note)) rating = 5;
+       else if (/regret|ego|bad|hurt/i.test(note))              rating = 2;
+       if (/\s\+$/.test(note)) { rating = Math.min(5, rating+1); note = note.replace(/\s\+$/, '').trim(); }
+       if (/\s-$/.test(note)) { rating = Math.max(1, rating-1); note = note.replace(/\s-$/, '').trim(); }
+
+       // build and save event
+       const event = {
+         id: Math.random().toString(36).slice(2),
+         hour: currentHour,
+         note,
+         rating,
+         categories,
+         purposes,
+         context: {}
+       };
+       results[currentDate].push(event);
+       imported++;
+     }
+   }
+   if (!imported) throw new Error('No events found! Check log format.');
+   return results;
+ }
+
+ export default function Settings() {
   const [importText, setImportText] = useState('');
   const [importMsg, setImportMsg] = useState('');
 
