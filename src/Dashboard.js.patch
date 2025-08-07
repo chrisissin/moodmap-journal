@@ -1,0 +1,110 @@
+--- a/src/Dashboard.js
++++ b/src/Dashboard.js
+@@ import React, { useState, useEffect } from 'react';
+-import { loadMetrics, defaultCategories } from './data';
++import { loadMetrics, saveAllMetrics, defaultCategories } from './data';
+
+ export default function Dashboard() {
+-  const [metrics, setMetrics] = useState({});
+-  useEffect(() => {
+-    setMetrics(loadMetrics());
+-  }, []);
++  // load and keep metrics in state
++  const [metrics, setMetrics] = useState({});
++  useEffect(() => {
++    setMetrics(loadMetrics());
++  }, []);
+
+   // Date range picker (last 7 days default) …
+   const dates = getDatesInRange(startDate, endDate);
+
+-  const sortedCats = Object.keys(catCounts);
++  const catIds = defaultCategories.map(c => c.id);
+
+-  const timeline = dates.map(d => metrics[d]?.avgRating ?? null);
++  // Recompute Totals on the fly
++  const totals = catIds.map(cid =>
++    dates.reduce((sum, d) => sum + (metrics[d]?.catCounts[cid] || 0), 0)
++  );
+
++  // When a user changes a cell, update state + persist
++  function updateMetric(date, catId, value) {
++    const dayMetrics = metrics[date] || { catCounts: {}, avgRating: metrics[date]?.avgRating || 0 };
++    const newCatCounts = { ...dayMetrics.catCounts, [catId]: Number(value) };
++    const newMetrics = {
++      ...metrics,
++      [date]: { ...dayMetrics, catCounts: newCatCounts }
++    };
++    saveAllMetrics(newMetrics);
++    setMetrics(newMetrics);
++  }
+
+   return (
+     <div>
+@@ /* Metrics Table */  
+-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
++        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+           <thead>
+             <tr>
+               <th style={thStyle}>Total</th>
+-              {defaultCategories.map(cat => (
+-                <th key={cat.id} style={thStyle}>{cat.icon}</th>
+-              ))}
++              {catIds.map(cid => (
++                <th key={cid} style={thStyle}>
++                  {defaultCategories.find(c => c.id === cid)?.icon}
++                </th>
++              ))}
+             </tr>
+             <tr>
+               <th style={thStyle}>Category</th>
+-              {defaultCategories.map(cat => (
+-                <th key={cat.id} style={thStyle}>{cat.name}</th>
+-              ))}
++              {catIds.map(cid => (
++                <th key={cid} style={thStyle}>
++                  {defaultCategories.find(c => c.id === cid)?.name}
++                </th>
++              ))}
+             </tr>
+           </thead>
+           <tbody>
+-            <tr>
+-              <td style={tdStyle}>Totals</td>
+-              {totals.map((t,i) => (
+-                <td key={i} style={tdStyle}>{t}</td>
+-              ))}
+-            </tr>
++            {/* Totals row (non-editable) */}
++            <tr>
++              <td style={tdStyle}>Totals</td>
++              {totals.map((t, i) => (
++                <td key={i} style={tdStyle}>{t}</td>
++              ))}
++            </tr>
+             {/* One row per date */}
+             {dates.map(d => (
+               <tr key={d} style={{ background: '#f9f9f9' }}>
+-                <td style={tdStyle}>{d}</td>
+-                {catIds.map(cid => (
+-                  <td key={cid} style={tdStyle}>
+-                    {metrics[d]?.catCounts[cid] || 0}
+-                  </td>
+-                ))}
++                {/* Date label */}
++                <td style={tdStyle}>{d}</td>
++                {/* Editable count inputs */}
++                {catIds.map(cid => (
++                  <td key={cid} style={tdStyle}>
++                    <input
++                      type="number"
++                      value={metrics[d]?.catCounts[cid] || 0}
++                      min={0}
++                      style={{ width: '3em' }}
++                      onChange={e => updateMetric(d, cid, e.target.value)}
++                    />
++                  </td>
++                ))}
+               </tr>
+             ))}
+           </tbody>

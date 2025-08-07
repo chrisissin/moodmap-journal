@@ -68,3 +68,8 @@ export function loadMetrics() {
   try { return JSON.parse(localStorage.getItem('journalMetrics')) || {}; }
   catch { return {}; }
 }
+
+// data.js
+export function saveMetrics(metrics) {
+  localStorage.setItem('journalMetrics', JSON.stringify(metrics));
+}
