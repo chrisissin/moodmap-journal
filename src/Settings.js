@@ -248,65 +248,90 @@ function exportEventsCSV() {
   URL.revokeObjectURL(url);
 }
 
- // CSV import handler
- function handleCSVImport(e) {
-   const file = e.target.files[0];
-   if (!file) return;
-   const reader = new FileReader();
-   reader.onload = evt => {
-     try {
-       const text = evt.target.result;
-       const lines = text.trim().split(/\\r?\\n/);
-       if (lines.length < 2) throw new Error('CSV has no data rows');
+ // Utility: split one CSV line into an array of cells (handles quoted commas)
+function parseCsvLine(line) {
+  return line.match(/("([^"]|"")*"|[^,]*)(?=,|$)/g).map(cell => {
+    cell = cell.trim();
+    if (cell.startsWith('"') && cell.endsWith('"')) {
+      // un-escape quotes
+      return cell.slice(1, -1).replace(/""/g, '"');
+    }
+    return cell;
+  });
+}
 
-       const header = lines[0].split(',');
-       // expected: ['date','hour','note','rating','categories','purposes','weather','location','movement']
-       const data = loadData();
-       let imported = 0;
+function handleCSVImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const text = evt.target.result;
+    // split lines and drop any blank ones
+    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lines.length < 2) {
+      setImportMsg('CSV import: no data rows.');
+      return;
+    }
+        // build a lookup of column-name → index from the first line
+        const idx = parseCsvLine(lines[0]).reduce((map, col, i) => {
+          map[col.trim().toLowerCase()] = i;
+          return map;
+        }, {});
+    
+        // required columns check
+        if (idx.date == null || idx.hour == null || idx.note == null) {
+          setImportMsg('CSV import failed: missing date/hour/note columns.');
+          return;
+        }
+    // validate
+    if (idx.date < 0 || idx.hour < 0 || idx.note < 0) {
+      setImportMsg('CSV import failed: missing required columns.');
+      return;
+    }
 
-       for (let i = 1; i < lines.length; i++) {
-         const row = lines[i];
-         // simple CSV split respecting quoted fields
-         const cols = row.match(/("([^"]|"")*"|[^,]*)(?=,|$)/g).map(c => {
-           c = c.trim();
-           if (c.startsWith('"') && c.endsWith('"')) {
-             return c.slice(1, -1).replace(/""/g, '"');
-           }
-           return c;
-         });
+    try {
+      const store = loadData();
+      let added = 0;
+      // process data rows
+      lines.slice(1).forEach(line => {
+        const cols = parseCsvLine(line);
+        const dateStr  = cols[idx.date];
+        const hour     = parseInt(cols[idx.hour], 10) || 0;
+        const note     = cols[idx.note] || '';
+        const rating   = parseInt(cols[idx.rating], 10) || 3;
+        const cats     = (cols[idx.categories] || '').split('|').filter(x=>x);
+        const purs     = (cols[idx.purposes]   || '').split('|').filter(x=>x);
+        const weather  = cols[idx.weather]  || '';
+        const location = cols[idx.location] || '';
+        const movement = cols[idx.movement] || '';
 
-         const [date, hourStr, note, ratingStr, cats, purs, weather, location, movement] = cols;
-         const hour   = parseInt(hourStr, 10);
-         const rating = parseInt(ratingStr, 10);
-         const categories = cats ? cats.split('|').filter(x=>x) : [];
-         const purposes   = purs ? purs.split('|').filter(x=>x) : [];
+        const ev = {
+          id:        Math.random().toString(36).slice(2),
+          hour,
+          note,
+          rating,
+          categories: cats,
+          purposes:   purs,
+          context:    { weather, location, movement }
+        };
+        store[dateStr] = store[dateStr] || [];
+        // skip exact duplicates by hour+note
+        if (!store[dateStr].some(e => e.hour===ev.hour && e.note===ev.note)) {
+          store[dateStr].push(ev);
+          added++;
+        }
+      });
 
-         // Prepare a new event
-         const ev = { 
-           id: Math.random().toString(36).slice(2),
-           hour, note, rating,
-           categories, purposes,
-           context: { weather, location, movement }
-         };
+      saveData(store);
+      saveAllMetrics(store);
+      setImportMsg(`CSV import successful! ${added} new events.`);
+    } catch (err) {
+      setImportMsg('CSV import failed: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
 
-         data[date] = data[date] || [];
-         // skip duplicates by hour+note
-         if (!data[date].some(e => e.hour===hour && e.note===note)) {
-           data[date].push(ev);
-           imported++;
-         }
-       }
-
-       saveData(data);
-       saveAllMetrics(data);
-       setImportMsg(`CSV import successful! ${imported} new events added.`);
-     } catch (err) {
-       setImportMsg('CSV import failed: ' + err.message);
-     }
-   };
-   reader.readAsText(file);
-  }
-  
   return (
     <div>
       <h3>Settings</h3>
@@ -354,17 +379,18 @@ function exportEventsCSV() {
         </div>
       </section>
 
-      <section style={{ marginTop: 24 }}>
-        <h4>Import from CSV</h4>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={handleCSVImport}
-        />
-        <div style={{ marginTop: 8, color: importMsg.startsWith('Import failed') ? 'red' : 'green' }}>
-          {importMsg}
-        </div>
-      </section>      
+          <section style={{ marginTop: 24 }}>
+      <h4>Import from CSV</h4>
+      <input
+        type="file"
+        accept=".csv,text/csv"
+        onChange={handleCSVImport}
+      />
+      <div style={{ marginTop: 8, color: importMsg.startsWith('failed') ? 'red' : 'green' }}>
+        {importMsg}
+      </div>
+    </section>
+     
 
       <section style={{ marginTop:24 }}>
         <button onClick={handleExportJSON}>Export Events as JSON</button>
