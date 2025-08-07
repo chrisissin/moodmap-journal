@@ -50,7 +50,7 @@ function insertPMMarker(rawText) {
      let match;
      // Date header (MM/DD/YYYY)
      if ((match = dateLine.exec(line))) {
-       const [_, mm, dd, yyyy] = match;
+       const [, mm, dd, yyyy] = match;
        currentDate = `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
        results[currentDate] = results[currentDate] || [];
        isPM = false;
@@ -203,6 +203,110 @@ function insertPMMarker(rawText) {
     URL.revokeObjectURL(url);
   }
 
+  // Export all journalEvents to CSV
+function exportEventsCSV() {
+  const data = loadData(); // { date: [events] }
+  // Define columns
+  const header = [
+    'date',
+    'hour',
+    'note',
+    'rating',
+    'categories',
+    'purposes',
+    'weather',
+    'location',
+    'movement'
+  ];
+  const rows = [header];
+  // Flatten
+  Object.entries(data).sort().forEach(([date, evs]) => {
+    evs.forEach(ev => {
+      rows.push([
+        date,
+        ev.hour,
+        // wrap notes in quotes, escape existing quotes
+        `"${(ev.note||'').replace(/"/g,'""')}"`,
+        ev.rating,
+        `"${(ev.categories||[]).join('|')}"`,
+        `"${(ev.purposes||[]).join('|')}"`,
+        ev.context?.weather || '',
+        ev.context?.location || '',
+        ev.context?.movement || ''
+      ]);
+    });
+  });
+  // Build CSV string
+  const csv = rows.map(r => r.join(',')).join('\n');
+  // Trigger download
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'journal-events.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+ // CSV import handler
+ function handleCSVImport(e) {
+   const file = e.target.files[0];
+   if (!file) return;
+   const reader = new FileReader();
+   reader.onload = evt => {
+     try {
+       const text = evt.target.result;
+       const lines = text.trim().split(/\\r?\\n/);
+       if (lines.length < 2) throw new Error('CSV has no data rows');
+
+       const header = lines[0].split(',');
+       // expected: ['date','hour','note','rating','categories','purposes','weather','location','movement']
+       const data = loadData();
+       let imported = 0;
+
+       for (let i = 1; i < lines.length; i++) {
+         const row = lines[i];
+         // simple CSV split respecting quoted fields
+         const cols = row.match(/("([^"]|"")*"|[^,]*)(?=,|$)/g).map(c => {
+           c = c.trim();
+           if (c.startsWith('"') && c.endsWith('"')) {
+             return c.slice(1, -1).replace(/""/g, '"');
+           }
+           return c;
+         });
+
+         const [date, hourStr, note, ratingStr, cats, purs, weather, location, movement] = cols;
+         const hour   = parseInt(hourStr, 10);
+         const rating = parseInt(ratingStr, 10);
+         const categories = cats ? cats.split('|').filter(x=>x) : [];
+         const purposes   = purs ? purs.split('|').filter(x=>x) : [];
+
+         // Prepare a new event
+         const ev = { 
+           id: Math.random().toString(36).slice(2),
+           hour, note, rating,
+           categories, purposes,
+           context: { weather, location, movement }
+         };
+
+         data[date] = data[date] || [];
+         // skip duplicates by hour+note
+         if (!data[date].some(e => e.hour===hour && e.note===note)) {
+           data[date].push(ev);
+           imported++;
+         }
+       }
+
+       saveData(data);
+       saveAllMetrics(data);
+       setImportMsg(`CSV import successful! ${imported} new events added.`);
+     } catch (err) {
+       setImportMsg('CSV import failed: ' + err.message);
+     }
+   };
+   reader.readAsText(file);
+  }
+  
   return (
     <div>
       <h3>Settings</h3>
@@ -250,8 +354,24 @@ function insertPMMarker(rawText) {
         </div>
       </section>
 
+      <section style={{ marginTop: 24 }}>
+        <h4>Import from CSV</h4>
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={handleCSVImport}
+        />
+        <div style={{ marginTop: 8, color: importMsg.startsWith('Import failed') ? 'red' : 'green' }}>
+          {importMsg}
+        </div>
+      </section>      
+
       <section style={{ marginTop:24 }}>
         <button onClick={handleExportJSON}>Export Events as JSON</button>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <button onClick={exportEventsCSV}>Export Events as CSV</button>
       </section>
 
       <section style={{ marginTop:24 }}>
