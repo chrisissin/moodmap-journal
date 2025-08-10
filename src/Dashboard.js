@@ -1,5 +1,7 @@
+// src/Dashboard.js
+
 import React, { useState, useEffect } from 'react';
-import { loadMetrics, saveMetrics, defaultCategories } from './data';
+import { loadMetrics, defaultCategories } from './data';
 
 // Helper: list all dates between two dates (inclusive)
 function getDatesInRange(start, end) {
@@ -14,101 +16,84 @@ function getDatesInRange(start, end) {
 }
 
 export default function Dashboard() {
-  // Load metrics into state
   const [metrics, setMetrics] = useState({});
+  const [editingCell, setEditingCell] = useState(null); // { date, catId }
+  const [editValue, setEditValue] = useState('');
+
+  // Load metrics on mount
   useEffect(() => {
     setMetrics(loadMetrics());
   }, []);
 
-  // Date-range picker (defaults to last 7 days)
-  const today = new Date();
-  const defaultEnd = today.toISOString().slice(0,10);
-  const defaultStart = new Date(today.getTime() - 6*86400000)
-                        .toISOString().slice(0,10);
+  // Persist metrics back to localStorage and state
+  function saveMetrics(newMetrics) {
+    setMetrics(newMetrics);
+    localStorage.setItem('journalMetrics', JSON.stringify(newMetrics));
+  }
+
+  // Begin editing a cell
+  function startEditCell(date, catId) {
+    const current = metrics[date]?.catCounts?.[catId] || 0;
+    setEditingCell({ date, catId });
+    setEditValue(current.toString());
+  }
+
+  // Commit edit on blur or Enter
+  function commitEdit() {
+    if (!editingCell) return;
+    const { date, catId } = editingCell;
+    const num = parseInt(editValue, 10) || 0;
+    const next = { ...metrics };
+    if (!next[date]) next[date] = { catCounts: {}, avgRating: 0 };
+    next[date].catCounts = { ...next[date].catCounts, [catId]: num };
+    saveMetrics(next);
+    setEditingCell(null);
+  }
+
+  // Date range (last 7 days default)
+  const today       = new Date();
+  const defaultEnd  = today.toISOString().slice(0,10);
+  const defaultStart = new Date(today.getTime() - 6*24*60*60*1000)
+                         .toISOString().slice(0,10);
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate]     = useState(defaultEnd);
 
-  // Compute the list of dates to display
-  const dates = getDatesInRange(startDate, endDate);
+  // Gather dates ascending and then sort descending for display
+  const datesAsc = getDatesInRange(startDate, endDate);
+  const dates    = datesAsc.slice().sort((a,b) => b.localeCompare(a));
 
-  // Build aggregated counts for category distribution
+  // Aggregate category counts over the range
   const catCounts = {};
-  dates.forEach(d => {
-    const day = metrics[d]?.catCounts || {};
-    Object.entries(day).forEach(([cid, cnt]) => {
+  datesAsc.forEach(d => {
+    const c = metrics[d]?.catCounts || {};
+    Object.entries(c).forEach(([cid, cnt]) => {
       catCounts[cid] = (catCounts[cid] || 0) + cnt;
     });
   });
 
-  // The full list of category IDs (in display order)
-  const catIds = defaultCategories.map(c => c.id);
+  // For display order, use defaultCategories array order
+  const sortedCats = defaultCategories.map(c => c.id);
 
-  // Totals row (sum over the range)
-  const totals = catIds.map(cid =>
-    dates.reduce((sum, d) => sum + (metrics[d]?.catCounts[cid] || 0), 0)
-  );
-
-  // Mood timeline (average rating per day)
-  const timeline = dates.map(d =>
-    metrics[d]?.avgRating ?? null
-  );
-
-  // Handler: update a single cell and persist
-  function updateMetric(date, catId, value) {
-    const dayMetrics = metrics[date] || { catCounts: {}, avgRating: metrics[date]?.avgRating || 0 };
-    const newCatCounts = { ...dayMetrics.catCounts, [catId]: Number(value) };
-    const newMetrics = {
-      ...metrics,
-      [date]: { ...dayMetrics, catCounts: newCatCounts }
-    };
-    saveMetrics(newMetrics);
-    setMetrics(newMetrics);
-  }
+  // Compute mood timeline (not shown in table editing)
+  const timeline = datesAsc.map(d => {
+    const m = metrics[d];
+    return m ? m.avgRating : null;
+  });
 
   return (
     <div>
       <h3>Dashboard</h3>
-      <div style={{ marginBottom: 16 }}>
-        <label>From&nbsp;
-          <input
-            type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-          />
-        </label>
-        <label style={{ marginLeft: 12 }}>To&nbsp;
-          <input
-            type="date"
-            value={endDate}
-            onChange={e => setEndDate(e.target.value)}
-          />
-        </label>
-      </div>
 
-      <div style={{ display: 'flex', gap: 32 }}>
-        <div>
-          <b>Category Distribution ({startDate}–{endDate})</b>
-          <div style={{ marginTop: 8 }}>
-            {catIds.map(cid => {
-              const cat = defaultCategories.find(c => c.id === cid);
-              return (
-                <div key={cid}>
-                  {cat.icon} {cat.name}: {catCounts[cid] || 0}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div>
-          <b>Mood Timeline (Avg Rating)</b>
-          <div style={{ marginTop: 8 }}>
-            {dates.map((d,i) => (
-              <div key={d}>
-                {d}: {timeline[i] !== null ? timeline[i] + '★' : '—'}
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Date Range Picker */}
+      <div style={{ margin: '12px 0' }}>
+        <label>
+          From <input type="date" value={startDate}
+                      onChange={e => setStartDate(e.target.value)} />
+        </label>{' '}
+        <label>
+          To <input type="date" value={endDate}
+                    onChange={e => setEndDate(e.target.value)} />
+        </label>
       </div>
 
       {/* Editable Metrics Table */}
@@ -116,8 +101,8 @@ export default function Dashboard() {
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              <th style={thStyle}>Total</th>
-              {catIds.map(cid => (
+              <th style={thStyle}>Totals</th>
+              {sortedCats.map(cid => (
                 <th key={cid} style={thStyle}>
                   {defaultCategories.find(c => c.id === cid)?.icon}
                 </th>
@@ -125,7 +110,7 @@ export default function Dashboard() {
             </tr>
             <tr>
               <th style={thStyle}>Category</th>
-              {catIds.map(cid => (
+              {sortedCats.map(cid => (
                 <th key={cid} style={thStyle}>
                   {defaultCategories.find(c => c.id === cid)?.name}
                 </th>
@@ -133,24 +118,55 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
+            {/* Totals row */}
             <tr>
               <td style={tdStyle}>Totals</td>
-              {totals.map((t, i) => (
-                <td key={i} style={tdStyle}>{t}</td>
+              {sortedCats.map(cid => (
+                <td
+                  key={cid}
+                  style={tdStyle}
+                  onClick={() => startEditCell('Totals', cid)}
+                >
+                  {editingCell?.date === 'Totals' && editingCell.catId === cid ? (
+                    <input
+                      type="number"
+                      value={editValue}
+                      onChange={e => setEditValue(e.target.value)}
+                      onBlur={commitEdit}
+                      onKeyDown={e => e.key === 'Enter' && commitEdit()}
+                      autoFocus
+                      style={{ width: '100%' }}
+                    />
+                  ) : (
+                    catCounts[cid] || 0
+                  )}
+                </td>
               ))}
             </tr>
+
+            {/* One row per date */}
             {dates.map(d => (
               <tr key={d} style={{ background: '#f9f9f9' }}>
                 <td style={tdStyle}>{d}</td>
-                {catIds.map(cid => (
-                  <td key={cid} style={tdStyle}>
-                    <input
-                      type="number"
-                      min={0}
-                      value={metrics[d]?.catCounts[cid] || 0}
-                      style={{ width: '3em' }}
-                      onChange={e => updateMetric(d, cid, e.target.value)}
-                    />
+                {sortedCats.map(cid => (
+                  <td
+                    key={cid}
+                    style={tdStyle}
+                    onClick={() => startEditCell(d, cid)}
+                  >
+                    {editingCell?.date === d && editingCell.catId === cid ? (
+                      <input
+                        type="number"
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onBlur={commitEdit}
+                        onKeyDown={e => e.key === 'Enter' && commitEdit()}
+                        autoFocus
+                        style={{ width: '100%' }}
+                      />
+                    ) : (
+                      metrics[d]?.catCounts?.[cid] || 0
+                    )}
                   </td>
                 ))}
               </tr>
@@ -158,19 +174,45 @@ export default function Dashboard() {
           </tbody>
         </table>
       </div>
+      {/* Category Distribution & Mood Timeline */}
+      <div style={{ display: 'flex', gap: 32 }}>
+        <div>
+          <b>Category Distribution ({startDate}–{endDate})</b>
+          <div>
+            {sortedCats.map(cid => {
+              const cat = defaultCategories.find(c => c.id === cid);
+              const cnt = catCounts[cid] || 0;
+              return (
+                <div key={cid}>
+                  {cat?.icon} {cat?.name}: {cnt}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <b>Mood Timeline (Avg Rating)</b>
+          <div>
+            {datesAsc.map((d, i) => (
+              <div key={d}>
+                {d}: {timeline[i] !== null ? timeline[i] + '★' : '—'}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>      
     </div>
   );
 }
 
-// Cell styles
+// Styles
 const thStyle = {
   border: '1px solid #ccc',
   padding: 6,
-  background: '#eee',
-  textAlign: 'center'
+  background: '#eee'
 };
 const tdStyle = {
   border: '1px solid #ccc',
   padding: 6,
-  textAlign: 'center'
+  cursor: 'pointer'
 };

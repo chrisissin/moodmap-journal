@@ -1,11 +1,14 @@
 export const defaultCategories = [
+  { id: 'meaning', name: 'Meaning', icon: '🌱' },
+  { id: 'happy', name: 'Happy', icon: '😊' },
+  { id: 'adventure', name: 'Adventure', icon: '🚀' },  
+  { id: 'connect', name: 'Connect', icon: '🤝' },
+  { id: 'grateful', name: 'Grateful', icon: '🙏' },
+  { id: 'ego', name: 'Ego', icon: '🪞' }, 
   { id: 'work', name: 'Work', icon: '💼' },
   { id: 'learn', name: 'Learn', icon: '📚' },
   { id: 'play', name: 'Play', icon: '🎉' },
   { id: 'family', name: 'Family', icon: '👨‍👩‍👧' },
-  { id: 'grateful', name: 'Grateful', icon: '🙏' },
-  { id: 'ego', name: 'Ego/Improve', icon: '🪞' },
-  { id: 'connect', name: 'Connect/Value', icon: '🤝' },
   { id: 'exercise', name: 'Exercise', icon: '🏃‍♂️' },
   { id: 'errand', name: 'Errand', icon: '🛒' },
   { id: 'create', name: 'Create', icon: '🎨' },
@@ -21,7 +24,7 @@ export const defaultCategories = [
   { id: 'meal', name: 'Meal', icon: '🍽️' },
   { id: 'media', name: 'Media', icon: '📺' },
   { id: 'money', name: 'Money', icon: '💰' },
-  { id: 'read', name: 'Read', icon: '📖' }
+  { id: 'read', name: 'Read', icon: '📖' } 
 ];
 
 export const defaultPurposes = [
