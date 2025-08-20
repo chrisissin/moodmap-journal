@@ -1,7 +1,9 @@
 // src/Dashboard.js
 
 import React, { useState, useEffect } from 'react';
-import { loadMetrics, defaultCategories } from './data';
+//import { loadMetrics, defaultCategories } from './data';
+import { defaultCategories } from './data';
+import { loadMetricsFromSheets, saveMetricsToSheets } from './sheets';
 
 // Helper: list all dates between two dates (inclusive)
 function getDatesInRange(start, end) {
@@ -21,15 +23,36 @@ export default function Dashboard() {
   const [editValue, setEditValue] = useState('');
 
   // Load metrics on mount
-  useEffect(() => {
-    setMetrics(loadMetrics());
-  }, []);
+  // useEffect(() => {
+  //   setMetrics(loadMetrics());
+  // }, []);
+ useEffect(() => {
+   (async () => {
+     try {
+       const m = await loadMetricsFromSheets();
+       setMetrics(m || {});
+     } catch (e) {
+       console.error('Failed to load metrics from Sheets', e);
+       setMetrics({});
+     }
+   })();
+ }, []);
 
-  // Persist metrics back to localStorage and state
-  function saveMetrics(newMetrics) {
-    setMetrics(newMetrics);
-    localStorage.setItem('journalMetrics', JSON.stringify(newMetrics));
-  }
+  // // Persist metrics back to localStorage and state
+  // function saveMetrics(newMetrics) {
+  //   setMetrics(newMetrics);
+  //   localStorage.setItem('journalMetrics', JSON.stringify(newMetrics));
+  // }
+ async function saveMetrics(newMetrics) {
+   setMetrics(newMetrics); // optimistic
+   try {
+     await saveMetricsToSheets(newMetrics);
+   } catch (e) {
+     console.error('Failed to save metrics to Sheets', e);
+     // optionally show a toast and/or revert UI
+   }
+ }
+
 
   // Begin editing a cell
   function startEditCell(date, catId) {
