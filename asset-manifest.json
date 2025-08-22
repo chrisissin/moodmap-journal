@@ -1,14 +1,14 @@
 {
   "files": {
     "main.css": "/moodmap-journal/static/css/main.cbb50386.css",
-    "main.js": "/moodmap-journal/static/js/main.5874a2ec.js",
+    "main.js": "/moodmap-journal/static/js/main.f38965df.js",
     "service-worker.js": "/moodmap-journal/service-worker.js",
     "index.html": "/moodmap-journal/index.html",
     "main.cbb50386.css.map": "/moodmap-journal/static/css/main.cbb50386.css.map",
-    "main.5874a2ec.js.map": "/moodmap-journal/static/js/main.5874a2ec.js.map"
+    "main.f38965df.js.map": "/moodmap-journal/static/js/main.f38965df.js.map"
   },
   "entrypoints": [
     "static/css/main.cbb50386.css",
-    "static/js/main.5874a2ec.js"
+    "static/js/main.f38965df.js"
   ]
 }
